@@ -19,10 +19,10 @@ export default function AboutPage() {
           <div style={{ border:"1px solid #30363D",borderRadius:8,background:"#161B22",padding:24 }}>
             <p style={{ fontFamily:"monospace",color:"#00FF88",fontSize:12,marginBottom:16 }}>$ cat bio.txt</p>
             {[
-              `I'm Maximilian Musial, a Computer Science student concentrating in Cybersecurity with a deep focus on penetration testing and offensive security. My goal is simple: understand how systems are built well enough to find exactly where they break.`,
-              `What sets me apart is my combination of a strong programming foundation, hands-on security lab work, and the discipline and analytical thinking I've developed as a Division I student athlete. Competing at that level teaches you to perform under pressure, adapt quickly, and trust your teammates — skills that translate directly into technical security work.`,
-              `I actively compete in CTF challenges on HackTheBox and TryHackMe, study the OWASP Top 10 and real-world vulnerability disclosures, and document everything in write-ups so my learning is visible and useful to others.`,
-              `I'm currently seeking internship and co-op opportunities in penetration testing, red teaming, and offensive security where I can apply and grow these skills in a professional environment.`,
+              ``I'm Maximilian Musial, a Computer Science student concentrating in Cybersecurity with a deep focus on penetration testing and offensive security. My goal is simple: understand how systems are built well enough to find exactly where they break.`,
+`What sets me apart is my combination of a strong programming foundation, hands-on security lab work, and the discipline and analytical thinking I've developed as a Division 2 student athlete at Southern Connecticut State University. Competing at that level teaches you to perform under pressure, adapt quickly, and trust your teammates — skills that translate directly into technical security work.`,
+`I actively compete in CTF challenges on HackTheBox and TryHackMe, study the OWASP Top 10 and real-world vulnerability disclosures, and document everything in write-ups so my learning is visible and useful to others.`,
+`I'm currently seeking internship and co-op opportunities in penetration testing, red teaming, and offensive security where I can apply and grow these skills in a professional environment.`,
             ].map((t,i)=>(
               <p key={i} style={{ color:"#8B949E",lineHeight:1.7,fontSize:15,marginBottom:12 }}>{t}</p>
             ))}
