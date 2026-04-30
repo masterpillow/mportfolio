@@ -129,12 +129,12 @@ export const ARTICLES: Article[] = [
 export const WORK: WorkExp[] = [
   {
     id: "athlete",
-    role: "Division I Student Athlete",
-    org: "University Athletic Program",
+    role: "Division 2 Student Athlete",
+    org: "Southern Connecticut State Mens Track and Field",
     start: "2022-09",
     current: true,
     points: [
-      "Balanced a full Division I schedule with rigorous CS coursework — developed time management and performance-under-pressure skills directly applicable to incident response.",
+      "Balanced a full Division 2 schedule with rigorous CS coursework — developed time management and performance-under-pressure skills directly applicable to incident response.",
       "Operated in team environments built on trust, communication, and coordinated strategy — foundational for red team operations.",
       "Maintained academic standing while competing at an elite level, demonstrating persistence and discipline that security research demands.",
     ],
