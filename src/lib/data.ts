@@ -157,7 +157,7 @@ export const WORK: WorkExp[] = [
   {
     id: "coursework",
     role: "Cybersecurity Coursework",
-    org: "Computer Science Department",
+    org: "Southern Connecticut State University — Computer Science Department",
     start: "2022-09",
     current: true,
     points: [
