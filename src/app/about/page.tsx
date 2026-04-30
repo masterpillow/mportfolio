@@ -92,7 +92,7 @@ export default function AboutPage() {
           {/* Links */}
           <div style={{ border:"1px solid #30363D",borderRadius:8,background:"#161B22",padding:20 }}>
             <p style={{ fontFamily:"monospace",color:"#00FF88",fontSize:12,marginBottom:12 }}>$ find . -name links</p>
-            {[["GitHub","https://github.com/maxmusial","#E6EDF3"],["LinkedIn","https://linkedin.com/in/maxmusial","#58A6FF"],["HackTheBox","https://hackthebox.com","#F0883E"],["Resume","/resume.pdf","#00FF88"]].map(([l,h,c])=>(
+            {[["GitHub","https://github.com/masterpillow","#E6EDF3"],["LinkedIn","https://linkedin.com/in/maximilian-musial-64646125a","#58A6FF"],["HackTheBox","https://hackthebox.com","#F0883E"],["Resume","/resume.pdf","#00FF88"]].map(([l,h,c])=>(
               <a key={l} href={h} target={h.startsWith("http")?"_blank":undefined} rel="noopener noreferrer"
                 style={{ display:"block",fontFamily:"monospace",fontSize:13,color:c,textDecoration:"none",marginBottom:6 }}>
                 → {l}

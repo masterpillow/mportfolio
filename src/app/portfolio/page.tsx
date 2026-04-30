@@ -70,7 +70,7 @@ export default function PortfolioPage() {
           <p style={{ fontWeight:700,color:"#E6EDF3",marginBottom:4 }}>See everything on GitHub</p>
           <p style={{ fontSize:13,color:"#8B949E" }}>All projects, tools, and CTF write-ups live in my public repos.</p>
         </div>
-        <a href="https://github.com/maxmusial" target="_blank" rel="noopener noreferrer"
+        <a href="https://github.com/masterpillow" target="_blank" rel="noopener noreferrer"
           style={{ display:"inline-flex",alignItems:"center",gap:8,padding:"10px 20px",border:"1px solid #30363D",color:"#E6EDF3",fontFamily:"monospace",fontSize:13,borderRadius:6,textDecoration:"none",whiteSpace:"nowrap" }}>
           <GitFork size={15}/> GitHub Profile ↗
         </a>

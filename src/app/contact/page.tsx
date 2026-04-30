@@ -125,7 +125,7 @@ export default function ContactPage() {
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
           <div style={{ border:"1px solid #30363D",borderRadius:8,background:"#161B22",padding:20 }}>
             <p style={{ fontFamily:"monospace",color:"#00FF88",fontSize:11,marginBottom:14 }}>// find me at</p>
-            {[[Mail,"Email","max.musial@email.com","mailto:max.musial@email.com"],[GitFork,"GitHub","github.com/maxmusial","https://github.com/maxmusial"],[Link2,"LinkedIn","linkedin.com/in/maxmusial","https://linkedin.com/in/maxmusial"]].map(([Icon,label,val,href]:any)=>(
+            {[[Mail,"Email","maxmusial1@gmail.com","mailto:maxmusial1@gmail.com"],[GitFork,"GitHub","github.com/masterpillow","https://github.com/masterpillow"],[Link2,"LinkedIn","linkedin.com/in/maximilian-musial-64646125a","https://linkedin.com/in/maximilian-musial-64646125a"]].map(([Icon,label,val,href]:any)=>(
               <a key={label} href={href} target={href.startsWith("http")?"_blank":undefined} rel="noopener noreferrer"
                 style={{ display:"flex",gap:12,alignItems:"flex-start",marginBottom:14,textDecoration:"none" }}>
                 <Icon size={14} style={{ color:"#8B949E",marginTop:2,flexShrink:0 }}/>

@@ -3,7 +3,7 @@ import { Terminal, Mail, GitFork, Link2 } from "lucide-react";
 
 const SOCIAL = [
   { Icon: GitFork, href: "https://github.com/masterpillow",      label: "GitHub"   },
-  { Icon: Link2,   href: "https://linkedin.com/in/maxmusial",    label: "LinkedIn" },
+  { Icon: Link2,   href: "https://linkedin.com/in/maximilian-musial-64646125a",    label: "LinkedIn" },
   { Icon: Mail,    href: "/contact",                              label: "Email"    },
 ];
 
