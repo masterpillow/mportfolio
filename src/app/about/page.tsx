@@ -88,7 +88,7 @@ export default function AboutPage() {
             {[
               ["GitHub","https://github.com/masterpillow","#E6EDF3"],
               ["LinkedIn","https://www.linkedin.com/in/maximilian-musial-64646125a/","#58A6FF"],
-              ["HackTheBox","https://hackthebox.com","#F0883E"],
+              ["HackTheBox","https://profile.hackthebox.com/","#F0883E"],
               ["Resume","/resume.pdf","#00FF88"],
             ].map(([l,h,c]) => (
               <a key={l} href={h} target={h.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer"

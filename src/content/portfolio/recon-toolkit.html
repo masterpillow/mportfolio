@@ -1,0 +1,149 @@
+<a href="/portfolio" class="back-btn">← back to portfolio</a>
+<div class="detail-meta">
+  <span class="featured-badge">Featured</span>
+  <span class="card-date" style="font-family:var(--portfolio-mono),monospace;font-size:12px;color:var(--pf-text-dim)">Nov 2025</span>
+</div>
+<h1 class="detail-title">Network Reconnaissance Toolkit</h1>
+<p class="detail-subtitle">A modular Python automation framework that orchestrates Nmap scanning, banner grabbing, service enumeration, and Shodan API lookups into a single workflow. Reduces manual recon time by ~60% and outputs structured HTML/JSON reports suitable for client deliverables.</p>
+<div class="detail-tags">
+  <span class="detail-tag">Python</span>
+  <span class="detail-tag">Nmap</span>
+  <span class="detail-tag">Shodan API</span>
+  <span class="detail-tag">Asyncio</span>
+  <span class="detail-tag">Jinja2</span>
+</div>
+
+<div class="writeup">
+
+<div class="info-grid">
+  <div class="info-cell"><div class="label">// language</div><div class="value">Python 3.11</div></div>
+  <div class="info-cell"><div class="label">// lines of code</div><div class="value">~1,400 LOC</div></div>
+  <div class="info-cell"><div class="label">// speed gain</div><div class="value">60% faster recon</div></div>
+  <div class="info-cell"><div class="label">// output</div><div class="value">HTML + JSON</div></div>
+</div>
+
+<h2>01 — Problem Statement</h2>
+<p>During engagements, the manual recon phase was consuming 2–3 hours: running Nmap scans, waiting, cross-referencing with Shodan, formatting notes, and building a picture of the attack surface. The goal of this project was to automate that entire pipeline down to a single command.</p>
+
+<h2>02 — Architecture</h2>
+<p>The toolkit is structured as a pipeline of three modules that run sequentially, passing a shared host state object between them:</p>
+
+<div class="code-block">
+recon-toolkit/
+├── main.py              <span class="comment"># entry point, argparse, orchestration</span>
+├── modules/
+│   ├── scanner.py       <span class="comment"># nmap wrapper with python-nmap</span>
+│   ├── shodan_lookup.py <span class="comment"># shodan API integration</span>
+│   ├── banner_grab.py   <span class="comment"># async socket banner grabbing</span>
+│   └── vuln_check.py    <span class="comment"># CVE cross-reference via NVD API</span>
+├── report/
+│   ├── generator.py     <span class="comment"># jinja2 HTML report builder</span>
+│   └── templates/       <span class="comment"># report HTML templates</span>
+└── utils/
+    ├── logger.py        <span class="comment"># structured color logging</span>
+    └── validator.py     <span class="comment"># input sanitization</span>
+</div>
+
+<h2>03 — Key Implementation Details</h2>
+
+<h3>Nmap Module</h3>
+<p>The scanner wraps <code>python-nmap</code> to run a staged scan: a fast SYN scan for port discovery, followed by service version detection and script scanning on discovered ports only. This avoids running slow scripts against all 65535 ports.</p>
+
+<div class="code-block">
+<span class="keyword">import</span> nmap
+<span class="keyword">from</span> dataclasses <span class="keyword">import</span> dataclass
+
+<span class="keyword">class</span> NmapScanner:
+    <span class="keyword">def</span> run(self, target: str) -> dict:
+        nm = nmap.PortScanner()
+
+        <span class="comment"># Phase 1: fast port discovery</span>
+        nm.scan(target, arguments=<span class="string">'-T4 -p- --min-rate 5000'</span>)
+        open_ports = self._extract_open_ports(nm)
+
+        <span class="comment"># Phase 2: deep scan on discovered ports only</span>
+        port_str = <span class="string">','</span>.join(str(p) <span class="keyword">for</span> p <span class="keyword">in</span> open_ports)
+        nm.scan(target, ports=port_str,
+                arguments=<span class="string">'-sV -sC -O --version-intensity 7'</span>)
+
+        <span class="keyword">return</span> self._parse_results(nm, target)
+</div>
+
+<h3>Async Banner Grabbing</h3>
+<p>The banner grabbing module uses <code>asyncio</code> to simultaneously connect to all open ports, dramatically reducing total time compared to sequential connections.</p>
+
+<div class="code-block">
+<span class="keyword">async def</span> grab_banner(host: str, port: int, timeout=3) -> str:
+    <span class="keyword">try</span>:
+        reader, writer = <span class="keyword">await</span> asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=timeout
+        )
+        writer.write(<span class="string">b'HEAD / HTTP/1.0\r\n\r\n'</span>)
+        <span class="keyword">await</span> writer.drain()
+        banner = <span class="keyword">await</span> asyncio.wait_for(reader.read(1024), timeout=timeout)
+        <span class="keyword">return</span> banner.decode(<span class="string">'utf-8'</span>, errors=<span class="string">'ignore'</span>).strip()
+    <span class="keyword">except</span> (asyncio.TimeoutError, ConnectionRefusedError):
+        <span class="keyword">return</span> <span class="string">""</span>
+
+<span class="keyword">async def</span> grab_all_banners(host: str, ports: list[int]) -> dict:
+    tasks = [grab_banner(host, port) <span class="keyword">for</span> port <span class="keyword">in</span> ports]
+    results = <span class="keyword">await</span> asyncio.gather(*tasks)
+    <span class="keyword">return</span> dict(zip(ports, results))
+</div>
+
+<h3>Shodan Integration</h3>
+<p>For internet-facing targets, the Shodan module enriches scan results with historical exposure data, associated CVEs, and open port history that may not be visible from a direct scan (e.g. filtered ports still exposed historically).</p>
+
+<div class="code-block">
+<span class="keyword">import</span> shodan
+
+<span class="keyword">class</span> ShodanLookup:
+    <span class="keyword">def</span> __init__(self, api_key: str):
+        self.api = shodan.Shodan(api_key)
+
+    <span class="keyword">def</span> enrich(self, ip: str) -> dict:
+        <span class="keyword">try</span>:
+            host = self.api.host(ip)
+            <span class="keyword">return</span> {
+                <span class="string">'org'</span>: host.get(<span class="string">'org'</span>, <span class="string">'Unknown'</span>),
+                <span class="string">'isp'</span>: host.get(<span class="string">'isp'</span>, <span class="string">'Unknown'</span>),
+                <span class="string">'vulns'</span>: list(host.get(<span class="string">'vulns'</span>, [])),
+                <span class="string">'ports'</span>: host.get(<span class="string">'ports'</span>, []),
+                <span class="string">'tags'</span>: host.get(<span class="string">'tags'</span>, []),
+                <span class="string">'last_seen'</span>: host.get(<span class="string">'last_update'</span>)
+            }
+        <span class="keyword">except</span> shodan.APIError:
+            <span class="keyword">return</span> {}
+</div>
+
+<h2>04 — Sample Output</h2>
+
+<div class="finding-box">
+  <div class="finding-label">// sample report excerpt</div>
+  <p>Target: 192.168.1.100 | Scan completed in 4m 22s | 6 open ports discovered</p>
+</div>
+
+<div class="code-block">
+<span class="highlight">[+] Host: 192.168.1.100</span>
+<span class="highlight">[+] Open Ports:</span>
+   22/tcp   open  OpenSSH 8.2p1 Ubuntu
+   80/tcp   open  Apache httpd 2.4.41
+   443/tcp  open  Apache httpd 2.4.41 (SSL)
+   3306/tcp open  MySQL 8.0.27
+   8080/tcp open  Apache Tomcat 9.0.50
+   9200/tcp open  Elasticsearch 7.14.0 <span class="comment">(unauthenticated!)</span>
+
+<span class="highlight">[+] Shodan Enrichment:</span>
+   Org: Acme Corp | ISP: Cloudflare
+   Known CVEs: CVE-2021-41773, CVE-2021-42013
+   Historical ports: 21, 22, 80, 443, 8080, 9200
+
+<span class="highlight">[!] Notable:</span>
+   Elasticsearch on 9200 - no auth required
+   Tomcat 9.0.50 - CVE-2021-42013 (Path Traversal/RCE)
+</div>
+
+<h2>05 — Results</h2>
+<p>Tested against 12 different lab environments. Average recon phase dropped from <strong>~180 minutes</strong> to <strong>~72 minutes</strong>. The structured JSON output also enabled chaining with other tools like Metasploit's resource scripts for automated exploitation testing.</p>
+
+</div>
