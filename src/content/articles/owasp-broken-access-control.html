@@ -1,0 +1,206 @@
+<a href="/articles" class="back-btn">← back to articles</a>
+
+<div class="detail-tags">
+  <span class="detail-tag">OWASP Top 10</span>
+  <span class="detail-tag">Web Security</span>
+  <span class="detail-tag">Burp Suite</span>
+  <span class="detail-tag">Access Control</span>
+</div>
+
+<h1 class="detail-title">OWASP Top 10 Deep Dive: A01 — Broken Access Control</h1>
+<p class="detail-subtitle">Broken Access Control has held the #1 spot on the OWASP Top 10 since 2021, present in 94% of tested applications. This breakdown covers how it manifests, how to find it, and how to exploit it in a lab setting — plus what actually fixes it.</p>
+<div class="detail-meta">
+  <span>Feb 2026</span>
+  <span>⏱ 8 min read</span>
+</div>
+
+<div class="toc">
+  <div class="toc-label">// contents</div>
+  <ol>
+    <li>What is Broken Access Control?</li>
+    <li>IDOR — Insecure Direct Object Reference</li>
+    <li>Privilege Escalation (Vertical)</li>
+    <li>Force Browsing &amp; Missing Function-Level Control</li>
+    <li>Finding BAC with Burp Suite</li>
+    <li>Real-World Examples</li>
+    <li>Remediation</li>
+  </ol>
+</div>
+
+<div class="content">
+
+<h2>01 — What is Broken Access Control?</h2>
+<p>Access control enforces a policy so that users <strong>cannot act outside their intended permissions</strong>. When that enforcement fails — whether due to missing checks, client-side-only controls, or insecure direct references — you get Broken Access Control (BAC).</p>
+<p>It's the most widespread web vulnerability class because it's easy to introduce and hard to catch with automated scanning alone. Unlike SQL injection which has a clear signature, BAC requires business logic context: you need to understand <em>what a user should be allowed to do</em> before you can determine whether they can exceed it.</p>
+
+<div class="info-row">
+  <div class="info-pill"><div class="lbl">// OWASP rank</div><div class="val">A01:2021</div></div>
+  <div class="info-pill"><div class="lbl">// prevalence</div><div class="val">94% of apps</div></div>
+  <div class="info-pill"><div class="lbl">// impact</div><div class="val">Critical</div></div>
+  <div class="info-pill"><div class="lbl">// CWE</div><div class="val">CWE-284</div></div>
+</div>
+
+<h2>02 — IDOR: Insecure Direct Object Reference</h2>
+<p>IDOR is the most common and immediately impactful subtype. It happens when an application uses a user-controlled identifier (like an ID in a URL or request body) to access data directly, without verifying that the requesting user owns or is permitted to access that object.</p>
+
+<h3>Classic Example</h3>
+<p>A user views their own order details at:</p>
+<div class="code-block">GET /api/orders/10482
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+<span class="h">{"id": 10482, "user": "alice", "total": "$42.00", ...}</span>
+</div>
+
+<p>The application trusts the ID parameter without checking ownership. Simply changing the ID reveals another user's order:</p>
+
+<div class="code-block">GET /api/orders/<span class="h">10481</span>
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+
+<span class="h">{"id": 10481, "user": "bob", "email": "bob@example.com", "total": "$89.00", ...}</span>
+<span class="c"># Full PII of another user returned — no error, no auth check</span>
+</div>
+
+<div class="callout">
+  <div class="callout-label">// testing approach</div>
+  <p>Create two accounts. Perform an action with account A, capture the request ID, then replay it authenticated as account B. If B gets A's data — it's IDOR. Burp's Repeater makes this trivial.</p>
+</div>
+
+<h3>IDOR Isn't Just URLs</h3>
+<p>IDORs appear in many places beyond URL parameters:</p>
+<ul>
+  <li><strong>POST body</strong> — <code>{"account_id": 9001, "action": "download_statement"}</code></li>
+  <li><strong>Hidden form fields</strong> — <code>&lt;input type="hidden" name="user_id" value="42"&gt;</code></li>
+  <li><strong>Cookies</strong> — some apps store object IDs in cookies without signing them</li>
+  <li><strong>GraphQL</strong> — direct node ID queries: <code>node(id: "VXNlcjoxMjM=")</code></li>
+</ul>
+
+<h2>03 — Privilege Escalation (Vertical)</h2>
+<p>Vertical privilege escalation means a lower-privileged user accessing functionality reserved for higher-privileged roles — typically user → admin.</p>
+
+<h3>Admin Panel via Direct URL</h3>
+<div class="code-block"><span class="c"># Logged in as a regular user, navigate directly to:</span>
+GET /admin/users
+GET /admin/settings
+GET /admin/delete?user=alice
+
+<span class="h"># If the server only hides these links from the UI
+# but doesn't enforce the check server-side — full admin access</span>
+</div>
+
+<h3>Parameter Manipulation</h3>
+<div class="code-block">POST /api/user/update
+Content-Type: application/json
+
+<span class="c"># Original request:</span>
+{"username": "alice", "email": "alice@example.com"}
+
+<span class="c"># Modified — adding a role field not shown in the UI:</span>
+{"username": "alice", "email": "alice@example.com", <span class="h">"role": "admin"</span>}
+
+<span class="h"># Server accepts mass assignment → alice is now admin</span>
+</div>
+
+<div class="warn-box">
+  <div class="warn-label">// mass assignment</div>
+  <p>This is a specific BAC variant called Mass Assignment (or auto-binding). Frameworks like Rails, Laravel, and Spring can automatically bind request parameters to model properties. If sensitive fields like <code>role</code> or <code>is_admin</code> aren't explicitly excluded, they become exploitable.</p>
+</div>
+
+<h2>04 — Force Browsing &amp; Missing Function-Level Control</h2>
+<p>Some endpoints are "protected" only by not being linked from the UI. An attacker who knows (or guesses) the URL can access them directly.</p>
+
+<div class="code-block"><span class="c"># Wordlist-based discovery of unlinked admin endpoints</span>
+gobuster dir -u https://target.com -w /usr/share/seclists/Discovery/Web-Content/common.txt
+
+<span class="h">/admin           [200]
+/admin/backup    [200]
+/api/v1/admin    [200]
+/debug           [200]   ← environment variables, DB credentials</span>
+</div>
+
+<h2>05 — Finding BAC with Burp Suite</h2>
+
+<h3>The Two-Account Method</h3>
+<ol>
+  <li>Open Burp Suite, set up two browser profiles (one per account)</li>
+  <li>In browser 1 (victim), perform all available actions — Burp captures every request</li>
+  <li>In browser 2 (attacker), copy the victim's requests into Repeater but use the attacker's session cookie</li>
+  <li>Send each request and observe if the server enforces authorization</li>
+</ol>
+
+<h3>Burp's Autorize Extension</h3>
+<p>Autorize automates the two-account method. Configure it with the low-privileged session token and it automatically re-sends every captured request with that token, flagging any that return a 200 instead of 401/403.</p>
+
+<div class="code-block"><span class="c"># Autorize intercept filter — configure to re-send with:</span>
+Cookie: session=<span class="h">LOW_PRIV_SESSION_TOKEN</span>
+
+<span class="c"># Results table shows three columns:
+# Original response | Low-priv response | Status</span>
+<span class="h">GET /admin/users    200 OK   →   200 OK   →  BYPASSED ⚠</span>
+GET /api/profile    200 OK   →   401 Unauth  →  Enforced ✓
+</div>
+
+<h2>06 — Real-World Examples</h2>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Company</th><th>Vulnerability</th><th>Impact</th><th>Bounty</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Facebook (2015)</td>
+      <td>IDOR on photo deletion — any user could delete any photo via direct ID</td>
+      <td>Data destruction at scale</td>
+      <td class="green">$12,500</td>
+    </tr>
+    <tr>
+      <td>Uber (2016)</td>
+      <td>IDOR exposing driver GPS location and trip history via user ID manipulation</td>
+      <td>Mass PII exposure</td>
+      <td class="green">$9,000</td>
+    </tr>
+    <tr>
+      <td>Twitter (2020)</td>
+      <td>Vertical privilege escalation via admin panel accessible without role enforcement</td>
+      <td>Account takeover</td>
+      <td class="yellow">Internal fix</td>
+    </tr>
+    <tr>
+      <td>HackerOne (2019)</td>
+      <td>IDOR exposing private bug reports via report ID in API endpoint</td>
+      <td>Vulnerability disclosure</td>
+      <td class="green">$2,500</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>07 — Remediation</h2>
+<p>Access control is a server-side concern — never rely on hiding UI elements or client-side validation alone. Concrete fixes:</p>
+
+<h3>Enforce Ownership Checks</h3>
+<div class="code-block"><span class="c"># ❌ Vulnerable — trusts the ID in the request</span>
+<span class="k">def</span> get_order(order_id):
+    <span class="k">return</span> db.query(<span class="s">"SELECT * FROM orders WHERE id = ?"</span>, order_id)
+
+<span class="c"># ✅ Fixed — ties the query to the authenticated user's ID</span>
+<span class="k">def</span> get_order(order_id, current_user):
+    order = db.query(<span class="s">"SELECT * FROM orders WHERE id = ? AND user_id = ?"</span>,
+                     order_id, current_user.id)
+    <span class="k">if not</span> order:
+        raise AuthorizationError(<span class="s">"Access denied"</span>)
+    <span class="k">return</span> order
+</div>
+
+<h3>Use Indirect References</h3>
+<p>Instead of exposing database IDs, map them to per-session opaque tokens. A user's session maps <code>token_abc → order_10482</code> server-side — even if they guess another token, it won't map to anything in their session.</p>
+
+<h3>Centralize Authorization</h3>
+<p>Don't scatter access checks across controller methods. Use a middleware or policy layer that enforces rules consistently — frameworks like Pundit (Rails), Spring Security, and Laravel Gates provide this pattern.</p>
+
+<div class="callout">
+  <div class="callout-label">// key takeaway</div>
+  <p>The root cause of Broken Access Control is almost always "we check this in some places but not all places." Centralizing authorization logic eliminates the inconsistency that attackers exploit.</p>
+</div>
+
+</div>
